@@ -106,6 +106,101 @@ func (mw *AppMainWindow) log(text string) {
 		}
 	})
 }
+func FastHashCompare(file1, file2 string) (bool, error) {
+	// 1. 首先检查是否是同一个文件（路径相同）
+	if file1 == file2 {
+		return true, nil
+	}
+
+	// 2. 快速检查文件大小（避免不必要的哈希计算）
+	info1, err := os.Stat(file1)
+	if err != nil {
+
+		return false, err
+	}
+
+	info2, err := os.Stat(file2)
+	if err != nil {
+		return false, err
+	}
+
+	if info1.Size() != info2.Size() {
+		fmt.Println("大小不相同 ")
+		return false, nil
+	} else {
+		fmt.Println("大小相同 ")
+	}
+	fmt.Println("继续 ")
+	// 3. 使用MD5哈希（最快的主流哈希算法）
+	hash1, err := fastMD5(file1)
+	if err != nil {
+		return false, err
+	}
+
+	hash2, err := fastMD5(file2)
+	if err != nil {
+		return false, err
+	}
+	fmt.Printf("哈希值1: %s\r\n哈希值2: %s", hash1, hash2)
+
+	return hash1 == hash2, nil
+}
+func fastMD5(filename string) (string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// 使用较大缓冲区（1MB）提高读取速度
+	buf := make([]byte, 1024*1024)
+	hash := md5.New()
+
+	for {
+		n, err := file.Read(buf)
+		if n > 0 {
+			hash.Write(buf[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+func (mw *AppMainWindow) BenchmarkCompare(file1, file2 string) {
+	start := time.Now()
+	same, err := FastHashCompare(file1, file2)
+
+	if err != nil {
+		fmt.Printf("比较出错: %v\n", err)
+		return
+	}
+
+	if same {
+
+		mw.log(fmt.Sprintf("\r\n两个文件内容相同  [%s] == [%s]\r\n", filepath.Base(file1), filepath.Base(file2)))
+		fmt.Println("两个文件相同")
+	} else {
+
+		fmt.Println("两个文件不同")
+	}
+	elapsed := time.Since(start)
+	fmt.Printf("耗时: %v\n", elapsed)
+}
+func (mw *AppMainWindow) compare() {
+	oldPath := mw.PatchTab.OldPathEdit.Text()
+	newPath := mw.PatchTab.NewPathEdit.Text()
+
+	if oldPath != "" && newPath != "" {
+		if mw.getPathType(oldPath) == FileTypeFile && mw.getPathType(newPath) == FileTypeFile {
+			mw.BenchmarkCompare(oldPath, newPath)
+		}
+	}
+}
 
 func FastHashCompare(file1, file2 string) (bool, error) {
 	// 1. 首先检查是否是同一个文件（路径相同）
