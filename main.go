@@ -24,6 +24,11 @@ import (
 
 type FileType int
 
+var done chan bool
+var md5done chan bool
+var HdiffzPath string
+var Cp uintptr
+
 const (
 	FileTypeUnknown FileType = iota
 	FileTypeFile
@@ -34,7 +39,7 @@ type PatchTab struct {
 	TabPage            *walk.TabPage
 	OldPathEdit        *walk.LineEdit
 	NewPathEdit        *walk.LineEdit
-	PatchPathEdit      *walk.LineEdit
+	OutPutEdit         *walk.LineEdit
 	CreatePatchBtn     *walk.PushButton
 	VerifyPatchBtn     *walk.PushButton
 	OverwriteCheck     *walk.CheckBox
@@ -53,13 +58,14 @@ type PatchTab struct {
 	OldPathType        FileType
 	NewPathType        FileType
 	AutoPatchName      string
+	ProgressBar        *walk.ProgressBar
 }
 
 type ApplyTab struct {
 	TabPage            *walk.TabPage
 	OldPathEdit        *walk.LineEdit
 	PatchPathEdit      *walk.LineEdit
-	NewPathEdit        *walk.LineEdit
+	OutPutEdit         *walk.LineEdit
 	ApplyPatchBtn      *walk.PushButton
 	VerifyApplyBtn     *walk.PushButton
 	OverwriteCheck     *walk.CheckBox
@@ -76,6 +82,7 @@ type ApplyTab struct {
 	OldPathType        FileType
 	PatchPathType      FileType
 	AutoPatchName      string
+	ProgressBar        *walk.ProgressBar
 }
 
 type AppMainWindow struct {
@@ -86,18 +93,16 @@ type AppMainWindow struct {
 	LogMutex  sync.Mutex
 }
 
-var HdiffzPath string
-var Cp uintptr
-
 func (mw *AppMainWindow) log(text string) {
 	mw.LogMutex.Lock()
 	defer mw.LogMutex.Unlock()
 	now := time.Now().Format("15:04:05")
 	logLine := fmt.Sprintf("[%s] %s\r\n", now, text)
+	curTab := mw.TabWidget.CurrentIndex()
 	// UI 更新必须在主线程执行
 	mw.Synchronize(func() {
 		var logEdit *walk.TextEdit
-		if mw.TabWidget.CurrentIndex() == 0 {
+		if curTab == 0 {
 			logEdit = mw.PatchTab.LogTextEdit
 		} else {
 			logEdit = mw.ApplyTab.LogTextEdit
@@ -121,7 +126,6 @@ func (mw *AppMainWindow) compare() {
 				fmt.Println("文件路径相同，跳过比较")
 				return
 			} else {
-				//  进行比较
 				fmt.Println("文件路径不相同 ，进行比较")
 				mw.BenchmarkCompare(oldPath, newPath)
 			}
@@ -131,22 +135,32 @@ func (mw *AppMainWindow) compare() {
 
 func (mw *AppMainWindow) BenchmarkCompare(file1, file2 string) {
 	start := time.Now()
+	md5done = make(chan bool)
+	curTab := mw.TabWidget.CurrentIndex()
 	mw.log(fmt.Sprintln("计算文件MD5值..."))
-	hash1, err := fastMD5(file1)
-	if err != nil {
-		mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file1, err))
-		return
-	}
-	hash2, err := fastMD5(file2)
-	if err != nil {
-		mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file2, err))
-		return
-	}
-	if hash1 == hash2 {
-		mw.log(fmt.Sprintf("[旧文件] 和 [新文件] 内容相同\r\nMD5:[%s]  %s\r\nMD5: [%s]  %s\r\n", hash1, filepath.Base(file1), hash2, filepath.Base(file2)))
-	}
-	elapsed := time.Since(start)
-	fmt.Printf("耗时: %v\r\n", elapsed)
+	go func() {
+		mw.setProcessing(curTab, true)
+		hash1, err := fastMD5(file1)
+		if err != nil {
+			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file1, err))
+			return
+		}
+		hash2, err := fastMD5(file2)
+		if err != nil {
+			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file2, err))
+			return
+		}
+		elapsed := time.Since(start)
+		mw.log(fmt.Sprintf("耗时: %v", elapsed))
+		mw.log(fmt.Sprintf("MD5 计算结果:\r\nMD5: [%s]  %s\r\nMD5: [%s]  %s", hash1, filepath.Base(file1), hash2, filepath.Base(file2)))
+		if hash1 == hash2 {
+			mw.log(fmt.Sprintln("[旧文件] 和 [新文件] MD5 值相同"))
+		} else {
+			mw.log(fmt.Sprintln("计算完成"))
+		}
+		md5done <- true
+	}()
+	go func() { <-md5done; mw.setProcessing(curTab, false) }()
 }
 
 func fastMD5(filename string) (string, error) {
@@ -186,8 +200,35 @@ func GbkToUtf8(s []byte) ([]byte, error) {
 	return all, nil
 }
 
+func (mw *AppMainWindow) setProcessing(index int, status bool) {
+	if index == 0 {
+		if status {
+			mw.PatchTab.ProgressBar.SetVisible(true)
+			mw.PatchTab.CreatePatchBtn.SetEnabled(false)
+			mw.PatchTab.VerifyPatchBtn.SetEnabled(false)
+		} else {
+			mw.PatchTab.ProgressBar.SetVisible(false)
+			mw.PatchTab.CreatePatchBtn.SetEnabled(true)
+			mw.PatchTab.VerifyPatchBtn.SetEnabled(true)
+		}
+	} else {
+		if status {
+			mw.ApplyTab.ProgressBar.SetVisible(true)
+			mw.ApplyTab.ApplyPatchBtn.SetEnabled(false)
+		} else {
+			mw.ApplyTab.ProgressBar.SetVisible(false)
+			mw.ApplyTab.ApplyPatchBtn.SetEnabled(true)
+		}
+	}
+}
+
 func (mw *AppMainWindow) executeCommand(args []string) {
+	start := time.Now()
+	done = make(chan bool)
+	curtab := mw.TabWidget.CurrentIndex()
+	mw.setProcessing(curtab, true)
 	toolPath := ""
+	fmt.Println("curTab: ", args)
 	// 将工作目录切换到可执行文件所在目录，保证双击启动时能找到同目录的 hdiffz.exe
 	if exe, err := os.Executable(); err == nil {
 		if dir := filepath.Dir(exe); dir != "" {
@@ -264,13 +305,24 @@ func (mw *AppMainWindow) executeCommand(args []string) {
 				}
 			}
 		}
+		elapsed := time.Since(start)
+		mw.log(fmt.Sprintf("耗时: %v\r\n", elapsed))
 		// 显示输出
 		if len(output) > 0 {
-			mw.log("\r\n===========================================================================\r\n" + strings.TrimSpace(string(output)) + "\r\n===========================================================================")
+			mw.log("\r\n================================== Info ==================================\r\n\r\n" + strings.TrimSpace(string(output)) + "\r\n=======================================================================")
 		}
 		if len(errorOutput) > 0 {
-			mw.log("\r\n====================================== ERROR ==============================\r\n" + strings.TrimSpace(string(errorOutput)) + "\r\n===========================================================================")
+			mw.log("\r\n================================= ERROR =================================\r\n\r\n" + strings.TrimSpace(string(errorOutput)) + "\r\n=======================================================================")
+
+			if bytes.Contains(errorOutput, []byte("already exists")) {
+				mw.log("错误: 已存在同名文件，请检查路径是否正确或勾选覆盖同名文件(-f)")
+			}
 		}
+		done <- true
+	}()
+	go func() {
+		<-done
+		mw.setProcessing(curtab, false)
 	}()
 }
 
@@ -286,7 +338,6 @@ func getPathType(path string) FileType {
 		return FileTypeDirectory
 	}
 	return FileTypeFile
-
 }
 
 func (mw *AppMainWindow) updatePatchName() {
@@ -299,13 +350,33 @@ func (mw *AppMainWindow) updatePatchName() {
 	ext := filepath.Ext(oldName)
 
 	baseName := strings.TrimSuffix(oldName, ext)
-	patchName := baseName + "_patch.diff"
+	newName := baseName + "_patch.diff"
 
-	mw.PatchTab.AutoPatchName = patchName
-	currentPatch := mw.PatchTab.PatchPathEdit.Text()
+	mw.PatchTab.AutoPatchName = newName
+	currentPatch := mw.PatchTab.OutPutEdit.Text()
 	if currentPatch == "" || currentPatch != mw.PatchTab.AutoPatchName {
 		dir := filepath.Dir(oldPath)
-		mw.PatchTab.PatchPathEdit.SetText(filepath.Join(dir, patchName))
+		mw.PatchTab.OutPutEdit.SetText(filepath.Join(dir, newName))
+	}
+}
+
+func (mw *AppMainWindow) updateApplyName() {
+	if mw.ApplyTab.OldPathEdit.Text() == "" || mw.ApplyTab.PatchPathEdit.Text() == "" {
+		return
+	}
+
+	oldPath := mw.ApplyTab.OldPathEdit.Text()
+	oldName := filepath.Base(oldPath)
+	ext := filepath.Ext(oldName)
+
+	baseName := strings.TrimSuffix(oldName, ext)
+	newName := baseName + "_new" + ext
+
+	mw.ApplyTab.AutoPatchName = newName
+	currentNew := mw.ApplyTab.OutPutEdit.Text()
+	if currentNew == "" || currentNew != mw.ApplyTab.AutoPatchName {
+		dir := filepath.Dir(oldPath)
+		mw.ApplyTab.OutPutEdit.SetText(filepath.Join(dir, newName))
 	}
 }
 
@@ -342,7 +413,7 @@ func (mw *AppMainWindow) updateApplyPathLabels() {
 		mw.ApplyTab.OldPathLabel.SetText("❓ 未知")
 	}
 
-	newType := getPathType(mw.ApplyTab.NewPathEdit.Text())
+	newType := getPathType(mw.ApplyTab.OutPutEdit.Text())
 	switch newType {
 	case FileTypeFile:
 		mw.ApplyTab.NewPathLabel.SetText("📄 文件")
@@ -353,30 +424,10 @@ func (mw *AppMainWindow) updateApplyPathLabels() {
 	}
 }
 
-func (mw *AppMainWindow) updateApplyName() {
-	if mw.ApplyTab.OldPathEdit.Text() == "" || mw.ApplyTab.PatchPathEdit.Text() == "" {
-		return
-	}
-
-	oldPath := mw.ApplyTab.OldPathEdit.Text()
-	oldName := filepath.Base(oldPath)
-	ext := filepath.Ext(oldName)
-	baseName := strings.TrimSuffix(oldName, ext)
-
-	newName := baseName + "_new" + ext
-	mw.ApplyTab.AutoPatchName = newName
-
-	currentNew := mw.ApplyTab.NewPathEdit.Text()
-	if currentNew == "" || currentNew == mw.ApplyTab.AutoPatchName {
-		dir := filepath.Dir(oldPath)
-		mw.ApplyTab.NewPathEdit.SetText(filepath.Join(dir, newName))
-	}
-}
-
 func (mw *AppMainWindow) createPatch() {
 	oldPath := mw.PatchTab.OldPathEdit.Text()
 	newPath := mw.PatchTab.NewPathEdit.Text()
-	patchPath := mw.PatchTab.PatchPathEdit.Text()
+	patchPath := mw.PatchTab.OutPutEdit.Text()
 
 	if oldPath == "" {
 		mw.log("错误: 请选择旧文件/文件夹路径")
@@ -432,22 +483,20 @@ func (mw *AppMainWindow) createPatch() {
 func (mw *AppMainWindow) verifyPatch() {
 	oldPath := mw.PatchTab.OldPathEdit.Text()
 	newPath := mw.PatchTab.NewPathEdit.Text()
-	patchPath := mw.PatchTab.PatchPathEdit.Text()
+	patchPath := mw.PatchTab.OutPutEdit.Text()
 
 	if oldPath == "" || newPath == "" || patchPath == "" {
 		mw.log(fmt.Sprintln("错误: 请填写所有必要的路径"))
 		return
 	}
-
 	args := []string{"-t", oldPath, newPath, patchPath}
-
 	mw.executeCommand(args)
 }
 
 func (mw *AppMainWindow) applyPatch() {
 	oldPath := mw.ApplyTab.OldPathEdit.Text()
 	patchPath := mw.ApplyTab.PatchPathEdit.Text()
-	newPath := mw.ApplyTab.NewPathEdit.Text()
+	newPath := mw.ApplyTab.OutPutEdit.Text()
 
 	if oldPath == "" || patchPath == "" {
 		mw.log(fmt.Sprintln("错误: 请选择旧文件和补丁文件路径"))
@@ -585,8 +634,8 @@ func (mw *AppMainWindow) handleDropFiles(files []string) {
 					fmt.Printf("拖放文件: %s -> 新路径\r\n", path)
 					return
 				}
-				if isPointInWindow(mw.PatchTab.PatchPathEdit) {
-					mw.PatchTab.PatchPathEdit.SetText(path)
+				if isPointInWindow(mw.PatchTab.OutPutEdit) {
+					mw.PatchTab.OutPutEdit.SetText(path)
 					fmt.Printf("拖放文件: %s -> 补丁路径\r\n", path)
 					return
 				}
@@ -601,8 +650,8 @@ func (mw *AppMainWindow) handleDropFiles(files []string) {
 					fmt.Printf("拖放文件: %s -> 补丁路径\r\n", path)
 					return
 				}
-				if isPointInWindow(mw.ApplyTab.NewPathEdit) {
-					mw.ApplyTab.NewPathEdit.SetText(path)
+				if isPointInWindow(mw.ApplyTab.OutPutEdit) {
+					mw.ApplyTab.OutPutEdit.SetText(path)
 					fmt.Printf("拖放文件: %s -> 新路径\r\n", path)
 					return
 				}
@@ -705,12 +754,12 @@ func main() {
 									Label{AssignTo: &mw.PatchTab.NewPathLabel, Text: ""},
 
 									Label{Text: "补丁文件:"},
-									LineEdit{AssignTo: &mw.PatchTab.PatchPathEdit},
+									LineEdit{AssignTo: &mw.PatchTab.OutPutEdit},
 									PushButton{
 										AssignTo: &mw.PatchTab.SelectPatchBtn,
 										Text:     "选择...",
 										OnClicked: func() {
-											mw.selectSaveFile(mw.PatchTab.PatchPathEdit, "选择补丁文件", "补丁文件 (*.diff)|*.diff")
+											mw.selectSaveFile(mw.PatchTab.OutPutEdit, "选择补丁文件", "补丁文件 (*.diff)|*.diff")
 										},
 									},
 									Label{AssignTo: &mw.PatchTab.PatchPathLabel, Text: ""},
@@ -772,6 +821,11 @@ func main() {
 									mw.PatchTab.LogTextEdit.SendMessage(0x0115, 7, 0)
 								},
 							},
+							ProgressBar{
+								AssignTo:    &mw.PatchTab.ProgressBar,
+								Visible:     false,
+								MarqueeMode: true,
+							},
 						},
 					},
 
@@ -810,7 +864,6 @@ func main() {
 										},
 									},
 									Label{AssignTo: &mw.ApplyTab.OldPathLabel, Text: ""},
-
 									Label{Text: "补丁文件:"},
 									LineEdit{
 										AssignTo: &mw.ApplyTab.PatchPathEdit,
@@ -826,10 +879,9 @@ func main() {
 										},
 									},
 									Label{AssignTo: &mw.ApplyTab.PatchPathLabel, Text: ""},
-
 									Label{Text: "新文件/文件夹:"},
 									LineEdit{
-										AssignTo: &mw.ApplyTab.NewPathEdit,
+										AssignTo: &mw.ApplyTab.OutPutEdit,
 										OnTextChanged: func() {
 											mw.updateApplyPathLabels()
 										},
@@ -841,14 +893,14 @@ func main() {
 												AssignTo: &mw.ApplyTab.SelectNewBtn,
 												Text:     "文件...",
 												OnClicked: func() {
-													mw.selectFile(mw.ApplyTab.NewPathEdit, "选择新文件输出", "所有文件 (*.*)|*.*")
+													mw.selectFile(mw.ApplyTab.OutPutEdit, "选择新文件输出", "所有文件 (*.*)|*.*")
 												},
 											},
 											PushButton{
 												AssignTo: &mw.ApplyTab.SelectNewFolderBtn,
 												Text:     "文件夹...",
 												OnClicked: func() {
-													mw.selectFolder(mw.ApplyTab.NewPathEdit, "选择新文件夹输出")
+													mw.selectFolder(mw.ApplyTab.OutPutEdit, "选择新文件夹输出")
 												},
 											},
 										},
@@ -856,7 +908,6 @@ func main() {
 									Label{AssignTo: &mw.ApplyTab.NewPathLabel, Text: ""},
 								},
 							},
-
 							Composite{
 								Layout: HBox{},
 								Children: []Widget{
@@ -867,7 +918,6 @@ func main() {
 									},
 								},
 							},
-
 							Composite{
 								Layout: HBox{},
 								Children: []Widget{
@@ -880,7 +930,6 @@ func main() {
 									},
 								},
 							},
-
 							TextEdit{
 								AssignTo: &mw.ApplyTab.LogTextEdit,
 								ReadOnly: true,
@@ -889,6 +938,11 @@ func main() {
 								OnTextChanged: func() {
 									mw.ApplyTab.LogTextEdit.SendMessage(0x0115, 7, 0)
 								},
+							},
+							ProgressBar{
+								AssignTo:    &mw.ApplyTab.ProgressBar,
+								Visible:     false,
+								MarqueeMode: true,
 							},
 						},
 					},
