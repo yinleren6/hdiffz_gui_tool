@@ -1,7 +1,53 @@
-~~问 AI 写的 BUG 巨多，难道是因为 AI 自己写的吗？~~
+# HDiffPatch GUI Tool
 
-用命令行拉扯文件路径总有点不方便，所以写了个 GUI 工具。直接拖进来就完事了。
+## 介绍
 
-使用方法: 把 hdiffz.exe 和 hdiffz-gui.exe 放到同一目录下，运行 hdiffz-gui.exe 即可。
+HDiffPatch GUI Tool 是使用 Go 语言编写的一个 GUI 工具。能方便的调用 HDiffPatch 工具，支持拖拽文件路径。
+用命令行拉扯文件路径总有点不方便，所以写了个 GUI 工具。直接拖进来就完事了。支持 Windows 10/11 64位系统。
 
-[HDiffPatch](https://github.com/sisong/HDiffPatch) 是一个C\C++库和命令行工具，用于在二进制文件或文件夹之间执行 diff(创建补丁) 和 patch(打补丁)；跨平台、运行速度快、创建的补丁小、支持巨大的文件并且diff和patch时都可以控制内存占用量。
+A GUI tool written in Go language. It can call HDiffPatch tool easily, and supports dragging file paths.
+
+~~问 AI 写的 BUG 巨多~~
+
+## 使用方法
+
+- 使用以下命令编译：
+`go install github.com/lxn/walk@latest`
+`go install github.com/akavel/rsrc@latest`
+`rsrc -manifest main.manifest -o rsrc.syso`
+`go build -ldflags "-H=windowsgui"`
+
+- 或者直接下载编译好的可执行文件 hdiffz-gui.exe 放到 hdiffz.exe (下载地址: [HDiffPatch](https://github.com/sisong/HDiffPatch)) 同一目录下，双击运行 hdiffz-gui.exe 即可。
+
+## 鸣谢
+
+使用到以下项目的源码或者二进制文件，感谢开源社区的力量，排名不分先后：
+
+- [go](https://github.com/golang/go)
+- [walk](https://github.com/lxn/walk)
+- [rsrc](https://github.com/akavel/rsrc)
+- [HDiffPatch](https://github.com/sisong/HDiffPatch)
+
+---
+
+## 更新日志 (Changelog)
+
+v0.4
+
+- 添加了任务进度条动画,避免界面卡住无响应
+- 修复子进程管道 gbk 乱码问题
+- bug 修复
+
+v0.3
+
+- 新增检查文件MD5值功能
+- bug 修复
+
+v0.2
+
+- 修复中文路径乱码问题
+- bug 修复
+
+v0.1
+
+- 初版发布

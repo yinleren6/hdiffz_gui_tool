@@ -1,3 +1,4 @@
+.gitignore
 *.txt
 *.diff
 *.zip
@@ -7,3 +8,4 @@
 go.sum
 go.mod
 *.exe~
+*.vpk
