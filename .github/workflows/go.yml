@@ -5,24 +5,42 @@ name: Go
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
-
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.25'
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
 
-    - name: Build
-      run: go build -v ldflags="-s -w -H=windowsgui"
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~\go\pkg\mod
+            ~\AppData\Local\go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
-    - name: Test
-      run: go test -v
+      - name: Download dependencies
+        run: |
+          go mod download
+          go mod verify
+          go mod tidy
+
+      - name: Build
+        run: |
+          go build -ldflags "-s -w -H=windowsgui"
+          # 或者指定输出
+
+      - name: Test
+        run: |
+          go test -v ./...
