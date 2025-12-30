@@ -683,12 +683,10 @@ func main() {
 			TabWidget{
 				AssignTo: &mw.TabWidget,
 				Pages: []TabPage{
-					TabPage{
-						Title:  "生成补丁",
-						Layout: VBox{},
-						DataBinder: DataBinder{
-							DataSource: mw,
-						},
+					{
+						Title:      "生成补丁",
+						Layout:     VBox{},
+						DataBinder: DataBinder{DataSource: mw},
 						Children: []Widget{
 							Composite{
 								Layout: Grid{Columns: 4, Spacing: 10},
@@ -703,21 +701,17 @@ func main() {
 										},
 									},
 									Composite{
-										Layout: HBox{},
+										Layout: HBox{MarginsZero: true, SpacingZero: true},
 										Children: []Widget{
 											PushButton{
-												AssignTo: &mw.PatchTab.SelectOldBtn,
-												Text:     "文件...",
-												OnClicked: func() {
-													mw.selectFile(mw.PatchTab.OldPathEdit, "选择旧文件", "所有文件 (*.*)|*.*")
-												},
+												AssignTo:  &mw.PatchTab.SelectOldBtn,
+												Text:      "文件...",
+												OnClicked: func() { mw.selectFile(mw.PatchTab.OldPathEdit, "选择旧文件", "所有文件 (*.*)|*.*") },
 											},
 											PushButton{
-												AssignTo: &mw.PatchTab.SelectOldFolderBtn,
-												Text:     "文件夹...",
-												OnClicked: func() {
-													mw.selectFolder(mw.PatchTab.OldPathEdit, "选择旧文件夹")
-												},
+												AssignTo:  &mw.PatchTab.SelectOldFolderBtn,
+												Text:      "文件夹...",
+												OnClicked: func() { mw.selectFolder(mw.PatchTab.OldPathEdit, "选择旧文件夹") },
 											},
 										},
 									},
@@ -733,21 +727,17 @@ func main() {
 										},
 									},
 									Composite{
-										Layout: HBox{},
+										Layout: HBox{MarginsZero: true, SpacingZero: true},
 										Children: []Widget{
 											PushButton{
-												AssignTo: &mw.PatchTab.SelectNewBtn,
-												Text:     "文件...",
-												OnClicked: func() {
-													mw.selectFile(mw.PatchTab.NewPathEdit, "选择新文件", "所有文件 (*.*)|*.*")
-												},
+												AssignTo:  &mw.PatchTab.SelectNewBtn,
+												Text:      "文件...",
+												OnClicked: func() { mw.selectFile(mw.PatchTab.NewPathEdit, "选择新文件", "所有文件 (*.*)|*.*") },
 											},
 											PushButton{
-												AssignTo: &mw.PatchTab.SelectNewFolderBtn,
-												Text:     "文件夹...",
-												OnClicked: func() {
-													mw.selectFolder(mw.PatchTab.NewPathEdit, "选择新文件夹")
-												},
+												AssignTo:  &mw.PatchTab.SelectNewFolderBtn,
+												Text:      "文件夹...",
+												OnClicked: func() { mw.selectFolder(mw.PatchTab.NewPathEdit, "选择新文件夹") },
 											},
 										},
 									},
@@ -765,7 +755,6 @@ func main() {
 									Label{AssignTo: &mw.PatchTab.PatchPathLabel, Text: ""},
 								},
 							},
-
 							Composite{
 								Layout: HBox{},
 								Children: []Widget{
@@ -786,40 +775,32 @@ func main() {
 									},
 									CheckBox{
 										AssignTo: &mw.PatchTab.MD5Check,
-										Text:     "对新旧文件进行MD5校验 (-m)",
+										Text:     "对新旧文件进行MD5校验",
 										Checked:  true,
 									},
 								},
 							},
-
 							Composite{
 								Layout: HBox{},
 								Children: []Widget{
 									PushButton{
-										AssignTo: &mw.PatchTab.CreatePatchBtn,
-										Text:     "生成补丁",
-										OnClicked: func() {
-											mw.createPatch()
-										},
+										AssignTo:  &mw.PatchTab.CreatePatchBtn,
+										Text:      "生成补丁",
+										OnClicked: func() { mw.createPatch() },
 									},
 									PushButton{
-										AssignTo: &mw.PatchTab.VerifyPatchBtn,
-										Text:     "验证",
-										OnClicked: func() {
-											mw.verifyPatch()
-										},
+										AssignTo:  &mw.PatchTab.VerifyPatchBtn,
+										Text:      "验证",
+										OnClicked: func() { mw.verifyPatch() },
 									},
 								},
 							},
-
 							TextEdit{
-								AssignTo: &mw.PatchTab.LogTextEdit,
-								ReadOnly: true,
-								HScroll:  true,
-								VScroll:  true,
-								OnTextChanged: func() {
-									mw.PatchTab.LogTextEdit.SendMessage(0x0115, 7, 0)
-								},
+								AssignTo:      &mw.PatchTab.LogTextEdit,
+								ReadOnly:      true,
+								HScroll:       true,
+								VScroll:       true,
+								OnTextChanged: func() { mw.PatchTab.LogTextEdit.SendMessage(0x0115, 7, 0) },
 							},
 							ProgressBar{
 								AssignTo:    &mw.PatchTab.ProgressBar,
@@ -829,7 +810,7 @@ func main() {
 						},
 					},
 
-					TabPage{
+					{
 						Title:  "应用补丁",
 						Layout: VBox{},
 						Children: []Widget{
@@ -845,31 +826,26 @@ func main() {
 										},
 									},
 									Composite{
-										Layout: HBox{},
+										Layout: HBox{MarginsZero: true, SpacingZero: true},
 										Children: []Widget{
 											PushButton{
-												AssignTo: &mw.ApplyTab.SelectOldBtn,
-												Text:     "文件...",
-												OnClicked: func() {
-													mw.selectFile(mw.ApplyTab.OldPathEdit, "选择旧文件", "所有文件 (*.*)|*.*")
-												},
+												AssignTo:  &mw.ApplyTab.SelectOldBtn,
+												Text:      "文件...",
+												OnClicked: func() { mw.selectFile(mw.ApplyTab.OldPathEdit, "选择旧文件", "所有文件 (*.*)|*.*") },
 											},
 											PushButton{
-												AssignTo: &mw.ApplyTab.SelectOldFolderBtn,
-												Text:     "文件夹...",
-												OnClicked: func() {
-													mw.selectFolder(mw.ApplyTab.OldPathEdit, "选择旧文件夹")
-												},
+												AssignTo:  &mw.ApplyTab.SelectOldFolderBtn,
+												Text:      "文件夹...",
+												OnClicked: func() { mw.selectFolder(mw.ApplyTab.OldPathEdit, "选择旧文件夹") },
 											},
 										},
 									},
 									Label{AssignTo: &mw.ApplyTab.OldPathLabel, Text: ""},
+
 									Label{Text: "补丁文件:"},
 									LineEdit{
-										AssignTo: &mw.ApplyTab.PatchPathEdit,
-										OnTextChanged: func() {
-											mw.updateApplyName()
-										},
+										AssignTo:      &mw.ApplyTab.PatchPathEdit,
+										OnTextChanged: func() { mw.updateApplyName() },
 									},
 									PushButton{
 										AssignTo: &mw.ApplyTab.SelectPatchBtn,
@@ -879,29 +855,24 @@ func main() {
 										},
 									},
 									Label{AssignTo: &mw.ApplyTab.PatchPathLabel, Text: ""},
+
 									Label{Text: "新文件/文件夹:"},
 									LineEdit{
-										AssignTo: &mw.ApplyTab.OutPutEdit,
-										OnTextChanged: func() {
-											mw.updateApplyPathLabels()
-										},
+										AssignTo:      &mw.ApplyTab.OutPutEdit,
+										OnTextChanged: func() { mw.updateApplyPathLabels() },
 									},
 									Composite{
-										Layout: HBox{},
+										Layout: HBox{MarginsZero: true, SpacingZero: true},
 										Children: []Widget{
 											PushButton{
-												AssignTo: &mw.ApplyTab.SelectNewBtn,
-												Text:     "文件...",
-												OnClicked: func() {
-													mw.selectFile(mw.ApplyTab.OutPutEdit, "选择新文件输出", "所有文件 (*.*)|*.*")
-												},
+												AssignTo:  &mw.ApplyTab.SelectNewBtn,
+												Text:      "文件...",
+												OnClicked: func() { mw.selectFile(mw.ApplyTab.OutPutEdit, "选择新文件输出", "所有文件 (*.*)|*.*") },
 											},
 											PushButton{
-												AssignTo: &mw.ApplyTab.SelectNewFolderBtn,
-												Text:     "文件夹...",
-												OnClicked: func() {
-													mw.selectFolder(mw.ApplyTab.OutPutEdit, "选择新文件夹输出")
-												},
+												AssignTo:  &mw.ApplyTab.SelectNewFolderBtn,
+												Text:      "文件夹...",
+												OnClicked: func() { mw.selectFolder(mw.ApplyTab.OutPutEdit, "选择新文件夹输出") },
 											},
 										},
 									},
@@ -922,22 +893,18 @@ func main() {
 								Layout: HBox{},
 								Children: []Widget{
 									PushButton{
-										AssignTo: &mw.ApplyTab.ApplyPatchBtn,
-										Text:     "应用补丁",
-										OnClicked: func() {
-											mw.applyPatch()
-										},
+										AssignTo:  &mw.ApplyTab.ApplyPatchBtn,
+										Text:      "应用补丁",
+										OnClicked: func() { mw.applyPatch() },
 									},
 								},
 							},
 							TextEdit{
-								AssignTo: &mw.ApplyTab.LogTextEdit,
-								ReadOnly: true,
-								HScroll:  true,
-								VScroll:  true,
-								OnTextChanged: func() {
-									mw.ApplyTab.LogTextEdit.SendMessage(0x0115, 7, 0)
-								},
+								AssignTo:      &mw.ApplyTab.LogTextEdit,
+								ReadOnly:      true,
+								HScroll:       true,
+								VScroll:       true,
+								OnTextChanged: func() { mw.ApplyTab.LogTextEdit.SendMessage(0x0115, 7, 0) },
 							},
 							ProgressBar{
 								AssignTo:    &mw.ApplyTab.ProgressBar,
@@ -949,9 +916,7 @@ func main() {
 				},
 			},
 		},
-		OnDropFiles: func(files []string) {
-			mw.handleDropFiles(files)
-		},
+		OnDropFiles: func(files []string) { mw.handleDropFiles(files) },
 	}
 
 	fmt.Println("Starting Run()...")

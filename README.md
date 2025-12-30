@@ -12,11 +12,10 @@ A GUI tool written in Go language. It can call HDiffPatch tool easily, and suppo
 ## 使用方法
 
 - 使用以下命令编译：
-`go install github.com/lxn/walk@latest`
-`go install github.com/akavel/rsrc@latest`
-`rsrc -manifest main.manifest -o rsrc.syso`
-`go build -ldflags "-H=windowsgui"`
-
+  `go install github.com/lxn/walk@latest`
+  `go install github.com/akavel/rsrc@latest`
+  `rsrc -manifest main.manifest -o rsrc.syso`
+  `go build -ldflags "-H=windowsgui"`
 - 或者直接下载编译好的可执行文件 hdiffz-gui.exe 放到 hdiffz.exe (下载地址: [HDiffPatch](https://github.com/sisong/HDiffPatch)) 同一目录下，双击运行 hdiffz-gui.exe 即可。
 
 ## 鸣谢
@@ -31,6 +30,11 @@ A GUI tool written in Go language. It can call HDiffPatch tool easily, and suppo
 ---
 
 ## 更新日志 (Changelog)
+
+v0.5
+
+- 修复UI界面控件对齐问题
+- 编译: 移除 DWARF 信息(-w)和符号表(-s), 缩小了编译体积
 
 v0.4
 
@@ -51,3 +55,4 @@ v0.2
 v0.1
 
 - 初版发布
+
