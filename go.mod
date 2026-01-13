@@ -5,8 +5,8 @@ go 1.25.5
 require github.com/lxn/walk v0.0.0-20210112085537-c389da54e794
 
 require (
-	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/text v0.32.0
+	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/text v0.33.0
 )
 
 require (
