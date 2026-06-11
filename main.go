@@ -24,9 +24,6 @@ import (
 
 type FileType int
 
-var done chan bool
-var md5done chan bool
-var HdiffzPath string
 var Cp uintptr
 
 const (
@@ -113,6 +110,8 @@ func (mw *AppMainWindow) log(text string) {
 	})
 }
 
+var md5Running sync.Mutex
+
 func (mw *AppMainWindow) compare() {
 	if !mw.PatchTab.MD5Check.Checked() {
 		return
@@ -120,47 +119,54 @@ func (mw *AppMainWindow) compare() {
 	oldPath := mw.PatchTab.OldPathEdit.Text()
 	newPath := mw.PatchTab.NewPathEdit.Text()
 
-	if oldPath != "" && newPath != "" {
-		if getPathType(oldPath) == FileTypeFile && getPathType(newPath) == FileTypeFile {
-			if oldPath == newPath {
-				fmt.Println("文件路径相同，跳过比较")
-				return
-			} else {
-				fmt.Println("文件路径不相同 ，进行比较")
-				mw.BenchmarkCompare(oldPath, newPath)
-			}
-		}
+	if oldPath == "" || newPath == "" {
+		return
 	}
+	if getPathType(oldPath) != FileTypeFile || getPathType(newPath) != FileTypeFile {
+		return
+	}
+	if oldPath == newPath {
+		return
+	}
+	mw.BenchmarkCompare(oldPath, newPath)
 }
 
 func (mw *AppMainWindow) BenchmarkCompare(file1, file2 string) {
+	if !md5Running.TryLock() {
+		mw.log("MD5 校验正在进行中，请稍候...")
+		return
+	}
+
 	start := time.Now()
-	md5done = make(chan bool)
-	curTab := mw.TabWidget.CurrentIndex()
-	mw.log(fmt.Sprintln("计算文件MD5值..."))
+	md5done := make(chan bool)
+
+	mw.log("计算文件MD5值...")
 	go func() {
-		mw.setProcessing(curTab, true)
+		defer func() {
+			md5Running.Unlock()
+			md5done <- true
+		}()
+
 		hash1, err := fastMD5(file1)
 		if err != nil {
-			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file1, err))
+			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v", file1, err))
 			return
 		}
 		hash2, err := fastMD5(file2)
 		if err != nil {
-			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v\r\n", file2, err))
+			mw.log(fmt.Sprintf("错误: 无法获取文件信息 %s - %v", file2, err))
 			return
 		}
 		elapsed := time.Since(start)
 		mw.log(fmt.Sprintf("耗时: %v", elapsed))
 		mw.log(fmt.Sprintf("MD5 计算结果:\r\nMD5: [%s]  %s\r\nMD5: [%s]  %s", hash1, filepath.Base(file1), hash2, filepath.Base(file2)))
 		if hash1 == hash2 {
-			mw.log(fmt.Sprintln("[旧文件] 和 [新文件] MD5 值相同"))
+			mw.log("[旧文件] 和 [新文件] MD5 值相同")
 		} else {
-			mw.log(fmt.Sprintln("计算完成"))
+			mw.log("计算完成")
 		}
-		md5done <- true
 	}()
-	go func() { <-md5done; mw.setProcessing(curTab, false) }()
+	go func() { <-md5done }()
 }
 
 func fastMD5(filename string) (string, error) {
@@ -191,77 +197,68 @@ func fastMD5(filename string) (string, error) {
 
 // GBK -> UTF-8
 func GbkToUtf8(s []byte) ([]byte, error) {
-	fmt.Println("CP is 936 (GBK)")
 	reader := transform.NewReader(bytes.NewReader(s), simplifiedchinese.GBK.NewDecoder())
-	all, err := io.ReadAll(reader)
-	if err != nil {
-		return all, err
-	}
-	return all, nil
+	return io.ReadAll(reader)
 }
 
 func (mw *AppMainWindow) setProcessing(index int, status bool) {
-	if index == 0 {
-		if status {
-			mw.PatchTab.ProgressBar.SetVisible(true)
-			mw.PatchTab.CreatePatchBtn.SetEnabled(false)
-			mw.PatchTab.VerifyPatchBtn.SetEnabled(false)
+	mw.Synchronize(func() {
+		if index == 0 {
+			if status {
+				mw.PatchTab.ProgressBar.SetVisible(true)
+				mw.PatchTab.CreatePatchBtn.SetEnabled(false)
+				mw.PatchTab.VerifyPatchBtn.SetEnabled(false)
+			} else {
+				mw.PatchTab.ProgressBar.SetVisible(false)
+				mw.PatchTab.CreatePatchBtn.SetEnabled(true)
+				mw.PatchTab.VerifyPatchBtn.SetEnabled(true)
+			}
 		} else {
-			mw.PatchTab.ProgressBar.SetVisible(false)
-			mw.PatchTab.CreatePatchBtn.SetEnabled(true)
-			mw.PatchTab.VerifyPatchBtn.SetEnabled(true)
+			if status {
+				mw.ApplyTab.ProgressBar.SetVisible(true)
+				mw.ApplyTab.ApplyPatchBtn.SetEnabled(false)
+			} else {
+				mw.ApplyTab.ProgressBar.SetVisible(false)
+				mw.ApplyTab.ApplyPatchBtn.SetEnabled(true)
+			}
 		}
-	} else {
-		if status {
-			mw.ApplyTab.ProgressBar.SetVisible(true)
-			mw.ApplyTab.ApplyPatchBtn.SetEnabled(false)
-		} else {
-			mw.ApplyTab.ProgressBar.SetVisible(false)
-			mw.ApplyTab.ApplyPatchBtn.SetEnabled(true)
-		}
-	}
+	})
 }
 
 func (mw *AppMainWindow) executeCommand(args []string) {
 	start := time.Now()
-	done = make(chan bool)
+	done := make(chan bool)
 	curtab := mw.TabWidget.CurrentIndex()
 	mw.setProcessing(curtab, true)
-	toolPath := ""
-	fmt.Println("curTab: ", args)
+
 	// 将工作目录切换到可执行文件所在目录，保证双击启动时能找到同目录的 hdiffz.exe
-	if exe, err := os.Executable(); err == nil {
-		if dir := filepath.Dir(exe); dir != "" {
-			fmt.Println("work_dir: " + dir)
-			_ = os.Chdir(dir)
-		}
-		toolPath = filepath.Join(filepath.Dir(exe), "hdiffz.exe")
-		fmt.Println("toolPath: ", toolPath)
-		if _, err_file_stat := os.Stat(toolPath); err_file_stat == nil {
-			// hdiffz.exe 路径
-			HdiffzPath = toolPath
-			fmt.Println("hdiffz.exe_path: " + HdiffzPath)
-		} else if os.IsNotExist(err_file_stat) {
-			mw.log(fmt.Sprintf("错误: 未找到 hdiffz.exe 工具: %v\r\n", err_file_stat))
-			return
-		} else {
-			mw.log(fmt.Sprintf("错误: %v\r\n", err_file_stat))
-			return
-		}
+	exe, err := os.Executable()
+	if err != nil {
+		mw.log(fmt.Sprintf("错误: 无法获取程序路径 - %v\r\n", err))
+		mw.setProcessing(curtab, false)
+		return
+	}
+	exeDir := filepath.Dir(exe)
+	if exeDir != "" {
+		_ = os.Chdir(exeDir)
+	}
+	toolPath := filepath.Join(exeDir, "hdiffz.exe")
+	if _, err := os.Stat(toolPath); err != nil {
+		mw.log(fmt.Sprintf("错误: 未找到 hdiffz.exe 工具: %v\r\n", err))
+		mw.setProcessing(curtab, false)
+		return
 	}
 
 	go func() {
-		cmd := exec.Command(HdiffzPath, args...)
-		if HdiffzPath == "" {
-			mw.log("错误: 当前目录下未找到 hdiffz.exe 可执行文件")
-			return
-		}
+		defer func() { done <- true }()
+
+		cmd := exec.Command(toolPath, args...)
 		cmd.SysProcAttr = &syscall.SysProcAttr{
-			HideWindow:    true,       // 隐藏子进程控制台窗口
-			CreationFlags: 0x08000000, // CREATE_NO_WINDOW 标志（强制无窗口）
+			HideWindow:    true,
+			CreationFlags: 0x08000000,
 		}
 
-		mw.log(fmt.Sprintln("Processing..."))
+		mw.log("Processing...")
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {
 			mw.log(fmt.Sprintf("错误: 创建输出管道失败 - %v\r\n", err))
@@ -276,28 +273,25 @@ func (mw *AppMainWindow) executeCommand(args []string) {
 			mw.log(fmt.Sprintf("错误: 启动进程失败 - %v\r\n", err))
 			return
 		}
-		outputRaw, _ := io.ReadAll(stdout)
-		errorRaw, _ := io.ReadAll(stderr)
+		outputRaw, readErr := io.ReadAll(stdout)
+		if readErr != nil {
+			mw.log(fmt.Sprintf("警告: 读取标准输出不完整 - %v\r\n", readErr))
+		}
+		errorRaw, readErr := io.ReadAll(stderr)
+		if readErr != nil {
+			mw.log(fmt.Sprintf("警告: 读取错误输出不完整 - %v\r\n", readErr))
+		}
+
 		var output []byte
 		var errorOutput []byte
-		var decodeErr error
 		if Cp == 936 {
-			output, decodeErr = GbkToUtf8(outputRaw)
-			if decodeErr != nil {
-				mw.log(fmt.Sprintf("GBK解码标准输出失败: %v\r\n", decodeErr))
-				output = outputRaw // 解码失败则用原始字节
-			}
-			errorOutput, decodeErr = GbkToUtf8(errorRaw)
-			if decodeErr != nil {
-				mw.log(fmt.Sprintf("GBK解码标准错误失败: %v\r\n", decodeErr))
-				errorOutput = errorRaw
-			}
+			output, _ = GbkToUtf8(outputRaw)
+			errorOutput, _ = GbkToUtf8(errorRaw)
 		} else {
-			// Cp≠936：使用原始编码（保留原有逻辑）
-			mw.log(fmt.Sprintf("当前编码非GBK(Cp=%d)，使用原始编码输出\r\n", Cp))
 			output = outputRaw
 			errorOutput = errorRaw
 		}
+
 		if err := cmd.Wait(); err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
@@ -307,18 +301,16 @@ func (mw *AppMainWindow) executeCommand(args []string) {
 		}
 		elapsed := time.Since(start)
 		mw.log(fmt.Sprintf("耗时: %v\r\n", elapsed))
-		// 显示输出
+
 		if len(output) > 0 {
 			mw.log("\r\n================================== Info ==================================\r\n\r\n" + strings.TrimSpace(string(output)) + "\r\n=======================================================================")
 		}
 		if len(errorOutput) > 0 {
 			mw.log("\r\n================================= ERROR =================================\r\n\r\n" + strings.TrimSpace(string(errorOutput)) + "\r\n=======================================================================")
-
 			if bytes.Contains(errorOutput, []byte("already exists")) {
 				mw.log("错误: 已存在同名文件，请检查路径是否正确或勾选覆盖同名文件(-f)")
 			}
 		}
-		done <- true
 	}()
 	go func() {
 		<-done
@@ -486,7 +478,7 @@ func (mw *AppMainWindow) verifyPatch() {
 	patchPath := mw.PatchTab.OutPutEdit.Text()
 
 	if oldPath == "" || newPath == "" || patchPath == "" {
-		mw.log(fmt.Sprintln("错误: 请填写所有必要的路径"))
+		mw.log("错误: 请填写所有必要的路径")
 		return
 	}
 	args := []string{"-t", oldPath, newPath, patchPath}
@@ -499,11 +491,11 @@ func (mw *AppMainWindow) applyPatch() {
 	newPath := mw.ApplyTab.OutPutEdit.Text()
 
 	if oldPath == "" || patchPath == "" {
-		mw.log(fmt.Sprintln("错误: 请选择旧文件和补丁文件路径"))
+		mw.log("错误: 请选择旧文件和补丁文件路径")
 		return
 	}
 	if newPath == "" {
-		mw.log(fmt.Sprintln("错误: 请指定新文件输出路径"))
+		mw.log("错误: 请指定新文件输出路径")
 		return
 	}
 	// 构建参数
@@ -569,7 +561,7 @@ func (mw *AppMainWindow) selectFolder(edit *walk.LineEdit, title string) {
 	ok, _, _ := procSHGetPathFromIDList.Call(pidl, uintptr(unsafe.Pointer(&pathBuf[0])))
 	if ok == 0 {
 		procCoTaskMemFree.Call(pidl)
-		mw.log(fmt.Sprintln("错误: 无法从 IDList 获取路径"))
+		mw.log("错误: 无法从 IDList 获取路径")
 		return
 	}
 

@@ -33,3 +33,5 @@ go.work.sum
 
 # Logs
 *.log
+*.syso
+.codegraph/
